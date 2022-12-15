@@ -8,3 +8,5 @@ BTP
     - Gaussian sensing matrices
     - We know the number of components required to model the source GMM
     - Even for initialisation, we know approximately the range of the values of the GMM parameters
+
+- <code>ecg_recon.ipynb</code> has the code for testing the update algorithm on ECG data. Noe that the mechanism of drift introduction remains the same of only adding an error to the mean vectors of each of the componenets.
