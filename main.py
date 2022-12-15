@@ -122,6 +122,7 @@ def load_test_ecg(path='data/ecg/mitbih_test.csv', num=1000, patch_size=20, clas
         data = data.loc[data[187] == class_id]
     data = np.array(data.values)
     data = data[:,:max_signal_length//patch_size*patch_size]
+    data = data.reshape(-1, patch_size)
     # np.random.seed(2)
     np.random.shuffle(data)
     data = data[:num]
@@ -271,193 +272,193 @@ if __name__ == "__main__":
         print(avg_cost)
 
 
-    test_data = create_pulse(num=n_test, signal_length=d, peak_width=10, num_peaks=d//10)
-    # test_data = load_test_ecg(num=n_test, patch_size=d)
-    psnr, psnr_min, psnr_max, psnr_std = [], [], [], []
-    val_err, err_std = [], []
-
-    # print(test_data.sum(axis=0))
-    # exit()
-
-    for m in tqdm(ms):
-        if use_mat:
-            A = np.load(folder_name + 'mat/%d.npy' % m)
-        else:
-            A = A_[:m, :]
-        mm = m//5*4
-        reconstruction = np.empty(test_data.shape)
-        patch_err = []
-        cnt1 = cnt
-        for j in range(len(test_data)):
-            x = test_data[j]
-            x_hat = np.zeros(x.shape)
-            for i in range(x.shape[0]//d):
-                y = A @ x[i*d:(i+1)*d]
-                x_hat[i*d:(i+1)*d] = decode(model, A[:mm], y[:mm])
-                patch_err.append(100*np.mean(np.square(y[mm:] - A[mm:] @ x_hat[i*d:(i+1)*d])))
-            # cs example
-            if cnt1 > 0:
-                plt.plot(x, label='Original')
-                plt.plot(x_hat, label='Reconstructed')
-                plt.legend()
-                plt.savefig(folder_name + 'csx_%d_%d.png' % (cnt1, mm))
-                plt.close()
-                cnt1 -= 1
-            reconstruction[j] = x_hat
-        val, min_val, max_val, std_val = PSNR(test_data, reconstruction)
-        psnr.append(val)
-        psnr_min.append(min_val)
-        psnr_max.append(max_val)
-        psnr_std.append(std_val)
-        val_err.append(np.mean(patch_err))
-        err_std.append(np.std(patch_err))
-
-    print(psnr)
-    print(val_err)
-    plot_data([x//5*4 for x in ms], psnr, path=folder_name + 'psnrx.png')
-    plot_data([x//5*4 for x in ms], val_err, path=folder_name + 'val_errx.png', ylabel='Validation error (1e-2)')
-
-
-    N = train_data.shape[0]
-    # N = n_train
-    batch = 25
-    for ii in range(len(test_data)//batch):
-        avg_cost = 0
-        ks = []
-        for i in range(ii,ii+batch):
-            x = test_data[i]
-            cost = []
-            for j in range(model.means_.shape[0]):
-                var_j, mu_j = model.covariances_[j], model.means_[j]
-                cost_j = weighted_l2(x - mu_j, var_j) + np.log(np.linalg.det(var_j))
-                cost.append(cost_j)
-            k = np.argmin(cost)
-            ks.append(k)
-            # print(cost[k])
-            avg_cost += cost[k]
-        avg_cost /= batch
-        print(avg_cost)
-        print(ks)
-
-        if avg_cost < 0:
-            for i in range(ii,ii+batch):
-                k = ks[i-ii]
-                n = N*model.weights_[k]
-                # print(k)
-                # update rule
-                z = (x-model.means_[k]).reshape(1,d)
-                var = z.T @ z
-                # var = np.diag((z.reshape(-1) ** 2))
-                # print(z.shape, var.shape)
-                # print(np.linalg.matrix_rank(var))
-                model.covariances_[k] = n*(model.covariances_[k])/(n+1) + n*var/((n+1)**2)
-                model.means_[k] += (x-model.means_[k])/(n+1)
-                model.weights_ *= N
-                model.weights_[k] += 1
-                model.weights_ /= N+1
-                N += 1
-        else:
-            print("new component")
-            mu = np.mean(test_data[ii:ii+batch], axis=0)
-            z = (test_data[ii:ii+batch] - mu)
-            # var = z.T @ z / batch
-            var = np.diag((z ** 2).mean(axis=0))
-            var += 1e-6 * np.eye(d)
-            # print("var shape", var.shape)
-            print("var rank", np.linalg.matrix_rank(var))
-            model.means_ = np.append(model.means_, mu.reshape(1,-1), axis=0)
-            model.covariances_ = np.append(model.covariances_, var.reshape(1,d,d), axis=0)
-            model.weights_ = np.append(model.weights_, [batch/N], axis=0)
-            model.weights_ *= N/(N+batch)
-            N += batch
-
-    for var in model.covariances_:
-        print(np.linalg.det(var), np.linalg.matrix_rank(var))
-
-
-    test_data = create_pulse(num=n_test, signal_length=d, peak_width=10, num_peaks=d//10)
-    # test_data = load_test_ecg(num=n_test, patch_size=d)
-    psnr, psnr_min, psnr_max, psnr_std = [], [], [], []
-    val_err, err_std = [], []
-
-    for m in tqdm(ms):
-        if use_mat:
-            A = np.load(folder_name + 'mat/%d.npy' % m)
-        else:
-            A = A_[:m, :]
-        mm = m//5*4
-        reconstruction = np.empty(test_data.shape)
-        patch_err = []
-        cnt1 = cnt
-        for j in range(len(test_data)):
-            x = test_data[j]
-            x_hat = np.zeros(x.shape)
-            for i in range(x.shape[0]//d):
-                y = A @ x[i*d:(i+1)*d]
-                x_hat[i*d:(i+1)*d] = decode(model, A[:mm], y[:mm])
-                patch_err.append(100*np.mean(np.square(y[mm:] - A[mm:] @ x_hat[i*d:(i+1)*d])))
-            # cs example
-            if cnt1 > 0:
-                plt.plot(x, label='Original')
-                plt.plot(x_hat, label='Reconstructed')
-                plt.legend()
-                plt.savefig(folder_name + 'csy_%d_%d.png' % (cnt1, mm))
-                plt.close()
-                cnt1 -= 1
-            reconstruction[j] = x_hat
-        val, min_val, max_val, std_val = PSNR(test_data, reconstruction)
-        psnr.append(val)
-        psnr_min.append(min_val)
-        psnr_max.append(max_val)
-        psnr_std.append(std_val)
-        val_err.append(np.mean(patch_err))
-        err_std.append(np.std(patch_err))
-
-    print(psnr)
-    print(val_err)
-    plot_data([x//5*4 for x in ms], psnr, path=folder_name + 'psnry.png')
-    plot_data([x//5*4 for x in ms], val_err, path=folder_name + 'val_erry.png', ylabel='Validation error (1e-2)')
-
-
-    test_data = load_test_ecg(num=n_test, patch_size=d)
     # test_data = create_pulse(num=n_test, signal_length=d, peak_width=10, num_peaks=d//10)
-    psnr, psnr_min, psnr_max, psnr_std = [], [], [], []
-    val_err, err_std = [], []
+    # # test_data = load_test_ecg(num=n_test, patch_size=d)
+    # psnr, psnr_min, psnr_max, psnr_std = [], [], [], []
+    # val_err, err_std = [], []
 
-    for m in tqdm(ms):
-        if use_mat:
-            A = np.load(folder_name + 'mat/%d.npy' % m)
-        else:
-            A = A_[:m, :]
-        mm = m//5*4
-        reconstruction = np.empty(test_data.shape)
-        patch_err = []
-        cnt1 = cnt
-        for j in range(len(test_data)):
-            x = test_data[j]
-            x_hat = np.zeros(x.shape)
-            for i in range(x.shape[0]//d):
-                y = A @ x[i*d:(i+1)*d]
-                x_hat[i*d:(i+1)*d] = decode(model, A[:mm], y[:mm])
-                patch_err.append(100*np.mean(np.square(y[mm:] - A[mm:] @ x_hat[i*d:(i+1)*d])))
-            # cs example
-            if cnt1 > 0:
-                plt.plot(x, label='Original')
-                plt.plot(x_hat, label='Reconstructed')
-                plt.legend()
-                plt.savefig(folder_name + 'csz_%d_%d.png' % (cnt1, mm))
-                plt.close()
-                cnt1 -= 1
-            reconstruction[j] = x_hat
-        val, min_val, max_val, std_val = PSNR(test_data, reconstruction)
-        psnr.append(val)
-        psnr_min.append(min_val)
-        psnr_max.append(max_val)
-        psnr_std.append(std_val)
-        val_err.append(np.mean(patch_err))
-        err_std.append(np.std(patch_err))
+    # # print(test_data.sum(axis=0))
+    # # exit()
 
-    print(psnr)
-    print(val_err)
-    plot_data([x//5*4 for x in ms], psnr, path=folder_name + 'psnrz.png')
-    plot_data([x//5*4 for x in ms], val_err, path=folder_name + 'val_errz.png', ylabel='Validation error (1e-2)')
+    # for m in tqdm(ms):
+    #     if use_mat:
+    #         A = np.load(folder_name + 'mat/%d.npy' % m)
+    #     else:
+    #         A = A_[:m, :]
+    #     mm = m//5*4
+    #     reconstruction = np.empty(test_data.shape)
+    #     patch_err = []
+    #     cnt1 = cnt
+    #     for j in range(len(test_data)):
+    #         x = test_data[j]
+    #         x_hat = np.zeros(x.shape)
+    #         for i in range(x.shape[0]//d):
+    #             y = A @ x[i*d:(i+1)*d]
+    #             x_hat[i*d:(i+1)*d] = decode(model, A[:mm], y[:mm])
+    #             patch_err.append(100*np.mean(np.square(y[mm:] - A[mm:] @ x_hat[i*d:(i+1)*d])))
+    #         # cs example
+    #         if cnt1 > 0:
+    #             plt.plot(x, label='Original')
+    #             plt.plot(x_hat, label='Reconstructed')
+    #             plt.legend()
+    #             plt.savefig(folder_name + 'csx_%d_%d.png' % (cnt1, mm))
+    #             plt.close()
+    #             cnt1 -= 1
+    #         reconstruction[j] = x_hat
+    #     val, min_val, max_val, std_val = PSNR(test_data, reconstruction)
+    #     psnr.append(val)
+    #     psnr_min.append(min_val)
+    #     psnr_max.append(max_val)
+    #     psnr_std.append(std_val)
+    #     val_err.append(np.mean(patch_err))
+    #     err_std.append(np.std(patch_err))
+
+    # print(psnr)
+    # print(val_err)
+    # plot_data([x//5*4 for x in ms], psnr, path=folder_name + 'psnrx.png')
+    # plot_data([x//5*4 for x in ms], val_err, path=folder_name + 'val_errx.png', ylabel='Validation error (1e-2)')
+
+
+    # N = train_data.shape[0]
+    # # N = n_train
+    # batch = 25
+    # for ii in range(len(test_data)//batch):
+    #     avg_cost = 0
+    #     ks = []
+    #     for i in range(ii,ii+batch):
+    #         x = test_data[i]
+    #         cost = []
+    #         for j in range(model.means_.shape[0]):
+    #             var_j, mu_j = model.covariances_[j], model.means_[j]
+    #             cost_j = weighted_l2(x - mu_j, var_j) + np.log(np.linalg.det(var_j))
+    #             cost.append(cost_j)
+    #         k = np.argmin(cost)
+    #         ks.append(k)
+    #         # print(cost[k])
+    #         avg_cost += cost[k]
+    #     avg_cost /= batch
+    #     print(avg_cost)
+    #     print(ks)
+
+    #     if avg_cost < 0:
+    #         for i in range(ii,ii+batch):
+    #             k = ks[i-ii]
+    #             n = N*model.weights_[k]
+    #             # print(k)
+    #             # update rule
+    #             z = (x-model.means_[k]).reshape(1,d)
+    #             var = z.T @ z
+    #             # var = np.diag((z.reshape(-1) ** 2))
+    #             # print(z.shape, var.shape)
+    #             # print(np.linalg.matrix_rank(var))
+    #             model.covariances_[k] = n*(model.covariances_[k])/(n+1) + n*var/((n+1)**2)
+    #             model.means_[k] += (x-model.means_[k])/(n+1)
+    #             model.weights_ *= N
+    #             model.weights_[k] += 1
+    #             model.weights_ /= N+1
+    #             N += 1
+    #     else:
+    #         print("new component")
+    #         mu = np.mean(test_data[ii:ii+batch], axis=0)
+    #         z = (test_data[ii:ii+batch] - mu)
+    #         # var = z.T @ z / batch
+    #         var = np.diag((z ** 2).mean(axis=0))
+    #         var += 1e-6 * np.eye(d)
+    #         # print("var shape", var.shape)
+    #         print("var rank", np.linalg.matrix_rank(var))
+    #         model.means_ = np.append(model.means_, mu.reshape(1,-1), axis=0)
+    #         model.covariances_ = np.append(model.covariances_, var.reshape(1,d,d), axis=0)
+    #         model.weights_ = np.append(model.weights_, [batch/N], axis=0)
+    #         model.weights_ *= N/(N+batch)
+    #         N += batch
+
+    # for var in model.covariances_:
+    #     print(np.linalg.det(var), np.linalg.matrix_rank(var))
+
+
+    # test_data = create_pulse(num=n_test, signal_length=d, peak_width=10, num_peaks=d//10)
+    # # test_data = load_test_ecg(num=n_test, patch_size=d)
+    # psnr, psnr_min, psnr_max, psnr_std = [], [], [], []
+    # val_err, err_std = [], []
+
+    # for m in tqdm(ms):
+    #     if use_mat:
+    #         A = np.load(folder_name + 'mat/%d.npy' % m)
+    #     else:
+    #         A = A_[:m, :]
+    #     mm = m//5*4
+    #     reconstruction = np.empty(test_data.shape)
+    #     patch_err = []
+    #     cnt1 = cnt
+    #     for j in range(len(test_data)):
+    #         x = test_data[j]
+    #         x_hat = np.zeros(x.shape)
+    #         for i in range(x.shape[0]//d):
+    #             y = A @ x[i*d:(i+1)*d]
+    #             x_hat[i*d:(i+1)*d] = decode(model, A[:mm], y[:mm])
+    #             patch_err.append(100*np.mean(np.square(y[mm:] - A[mm:] @ x_hat[i*d:(i+1)*d])))
+    #         # cs example
+    #         if cnt1 > 0:
+    #             plt.plot(x, label='Original')
+    #             plt.plot(x_hat, label='Reconstructed')
+    #             plt.legend()
+    #             plt.savefig(folder_name + 'csy_%d_%d.png' % (cnt1, mm))
+    #             plt.close()
+    #             cnt1 -= 1
+    #         reconstruction[j] = x_hat
+    #     val, min_val, max_val, std_val = PSNR(test_data, reconstruction)
+    #     psnr.append(val)
+    #     psnr_min.append(min_val)
+    #     psnr_max.append(max_val)
+    #     psnr_std.append(std_val)
+    #     val_err.append(np.mean(patch_err))
+    #     err_std.append(np.std(patch_err))
+
+    # print(psnr)
+    # print(val_err)
+    # plot_data([x//5*4 for x in ms], psnr, path=folder_name + 'psnry.png')
+    # plot_data([x//5*4 for x in ms], val_err, path=folder_name + 'val_erry.png', ylabel='Validation error (1e-2)')
+
+
+    # test_data = load_test_ecg(num=n_test, patch_size=d)
+    # # test_data = create_pulse(num=n_test, signal_length=d, peak_width=10, num_peaks=d//10)
+    # psnr, psnr_min, psnr_max, psnr_std = [], [], [], []
+    # val_err, err_std = [], []
+
+    # for m in tqdm(ms):
+    #     if use_mat:
+    #         A = np.load(folder_name + 'mat/%d.npy' % m)
+    #     else:
+    #         A = A_[:m, :]
+    #     mm = m//5*4
+    #     reconstruction = np.empty(test_data.shape)
+    #     patch_err = []
+    #     cnt1 = cnt
+    #     for j in range(len(test_data)):
+    #         x = test_data[j]
+    #         x_hat = np.zeros(x.shape)
+    #         for i in range(x.shape[0]//d):
+    #             y = A @ x[i*d:(i+1)*d]
+    #             x_hat[i*d:(i+1)*d] = decode(model, A[:mm], y[:mm])
+    #             patch_err.append(100*np.mean(np.square(y[mm:] - A[mm:] @ x_hat[i*d:(i+1)*d])))
+    #         # cs example
+    #         if cnt1 > 0:
+    #             plt.plot(x, label='Original')
+    #             plt.plot(x_hat, label='Reconstructed')
+    #             plt.legend()
+    #             plt.savefig(folder_name + 'csz_%d_%d.png' % (cnt1, mm))
+    #             plt.close()
+    #             cnt1 -= 1
+    #         reconstruction[j] = x_hat
+    #     val, min_val, max_val, std_val = PSNR(test_data, reconstruction)
+    #     psnr.append(val)
+    #     psnr_min.append(min_val)
+    #     psnr_max.append(max_val)
+    #     psnr_std.append(std_val)
+    #     val_err.append(np.mean(patch_err))
+    #     err_std.append(np.std(patch_err))
+
+    # print(psnr)
+    # print(val_err)
+    # plot_data([x//5*4 for x in ms], psnr, path=folder_name + 'psnrz.png')
+    # plot_data([x//5*4 for x in ms], val_err, path=folder_name + 'val_errz.png', ylabel='Validation error (1e-2)')
